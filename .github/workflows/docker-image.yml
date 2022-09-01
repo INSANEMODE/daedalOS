@@ -17,6 +17,6 @@ jobs:
     - name: Build the Docker image
       run: docker build . --file Dockerfile --tag daedalos:$(date +%s)
     - name: login to gitea
-      run: docker login -u <token> -p ${{ secrets.GITEA_TOKEN }}
+      run: docker login -u ${{ secrets.GITEA_USERNAME }} -p ${{ secrets.GITEA_PASSWORD }} gitea.insanemode.org
     - name: publish to gitea
       run: docker push gitea.insanemode.org/INSANEMODE/daedalos:latest
