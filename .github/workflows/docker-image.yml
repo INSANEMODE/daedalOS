@@ -13,14 +13,14 @@ jobs:
       id: build-image
       uses: redhat-actions/buildah-build@v2
       with:
-        image: daedalos
+        image: insanemode/daedalos
         tags: latest ${{ github.sha }}
         containerfiles: |
           ./Dockerfile
 
     # Podman Login action (https://github.com/redhat-actions/podman-login) also be used to log in,
     # in which case 'username' and 'password' can be omitted.
-    - name: Push To quay.io
+    - name: Push To gitea.insanemode.org
       id: push-to-quay
       uses: redhat-actions/push-to-registry@v2
       with:
