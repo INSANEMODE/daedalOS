@@ -1,22 +1,34 @@
-name: Docker Image CI
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+name: Build and Push Image
+on: [ push ]
 
 jobs:
-
   build:
-
-    runs-on: ubuntu-latest
+    name: Build and push image
+    runs-on: ubuntu-20.04
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag daedalos:$(date +%s)
-    - name: login to gitea
-      run: docker login -u ${{ secrets.GITEA_USERNAME }} -p ${{ secrets.GITEA_PASSWORD }} gitea.insanemode.org
-    - name: publish to gitea
-      run: docker push gitea.insanemode.org/INSANEMODE/daedalos:latest
+    - uses: actions/checkout@v2
+
+    - name: Build Image
+      id: build-image
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: daedalos
+        tags: latest ${{ github.sha }}
+        containerfiles: |
+          ./Dockerfile
+
+    # Podman Login action (https://github.com/redhat-actions/podman-login) also be used to log in,
+    # in which case 'username' and 'password' can be omitted.
+    - name: Push To quay.io
+      id: push-to-quay
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: ${{ steps.build-image.outputs.image }}
+        tags: ${{ steps.build-image.outputs.tags }}
+        registry: gitea.insanemode.org
+        username: ${{ secrets.GITEA_USERNAME }}
+        password: ${{ secrets.GITEA_PASSWORD }}
+
+    - name: Print image url
+      run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
