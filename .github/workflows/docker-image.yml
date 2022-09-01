@@ -1,0 +1,22 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag daedalos:$(date +%s)
+    - name: login to gitea
+      run: docker login -u <token> -p ${{ secrets.GITEA_TOKEN }}
+    - name: publish to gitea
+      run: docker push gitea.insanemode.org/INSANEMODE/daedalos:latest
