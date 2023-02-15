@@ -13,7 +13,7 @@ const FILE_INDEX = "/.index/search.lunr.json";
 
 export const SEARCH_LIBS = ["/System/lunr/lunr.min.js"];
 
-let baseIndex = {} as Index;
+let baseIndex = Object.create(null) as Index;
 
 const search = async (
   searchTerm: string,
@@ -61,7 +61,11 @@ const buildDynamicIndex = async (
   const overlayedFileSystems = overlayFs?.getOverlayedFileSystems();
   const writable = overlayedFileSystems?.writable as IWritableFs;
   const filesToIndex = Object.keys(writable?._cache?.map ?? {}).filter(
-    (path) => !SEARCH_EXTENSIONS.ignore.includes(extname(path))
+    (path) => {
+      const ext = extname(path);
+
+      return Boolean(ext) && !SEARCH_EXTENSIONS.ignore.includes(ext);
+    }
   );
   const indexedFiles = await Promise.all(
     filesToIndex.map(async (path) => {

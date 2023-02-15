@@ -86,10 +86,11 @@ const useMonaco = (
       const { ctrlKey, code, keyCode } = event;
 
       if (ctrlKey && (code === "KeyS" || keyCode === 83)) {
+        event.preventDefault();
+
         const [saveUrl, saveData] = getSaveFileInfo(url, editor);
 
-        if (saveUrl && saveData) {
-          event.preventDefault();
+        if (saveUrl && typeof saveData === "string") {
           await writeFile(saveUrl, saveData, true);
           updateFolder(dirname(saveUrl), basename(saveUrl));
           prependFileToTitle(basename(saveUrl));
@@ -105,6 +106,12 @@ const useMonaco = (
         theme,
       });
 
+      containerRef.current
+        ?.closest("section")
+        ?.addEventListener("focus", () => currentEditor.focus(), {
+          passive: true,
+        });
+
       setEditor(currentEditor);
       setArgument(id, "editor", currentEditor);
       setLoading(false);
@@ -114,6 +121,7 @@ const useMonaco = (
       if (editor && monaco) {
         editor.getModel()?.dispose();
         editor.dispose();
+        lockGlobal("define");
       }
     };
   }, [containerRef, editor, id, monaco, setArgument, setLoading]);

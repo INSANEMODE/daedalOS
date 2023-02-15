@@ -7,11 +7,11 @@ import type {
   SortOrders,
 } from "contexts/session/types";
 import type { Position } from "eruda";
+import type HtmlToImage from "html-to-image";
 import { basename, dirname, extname, join } from "path";
 import type { HTMLAttributes } from "react";
 import {
   HIGH_PRIORITY_REQUEST,
-  IPFS_GATEWAY_URL,
   MAX_RES_ICON_OVERRIDE,
   ONE_TIME_PASSIVE_EVENT,
   TASKBAR_HEIGHT,
@@ -39,9 +39,9 @@ export const getDpi = (): number => {
 
 export const toggleFullScreen = async (): Promise<void> => {
   try {
-    await (!document.fullscreenElement
-      ? document.documentElement.requestFullscreen()
-      : document.exitFullscreen());
+    await (document.fullscreenElement
+      ? document.exitFullscreen()
+      : document.documentElement.requestFullscreen());
   } catch {
     // Ignore failure to enter fullscreen
   }
@@ -115,12 +115,38 @@ export const blobToBase64 = (blob: Blob): Promise<string> =>
     fileReader.onloadend = () => resolve(fileReader.result as string);
   });
 
+type JxlDecodeResponse = { data: { imgData: ImageData } };
+
+export const decodeJxl = async (image: Buffer): Promise<ImageData> =>
+  new Promise((resolve) => {
+    const worker = new Worker("System/JXL.js/jxl_dec.js");
+
+    worker.postMessage({ image, jxlSrc: "image.jxl" });
+    worker.addEventListener("message", (message: JxlDecodeResponse) =>
+      resolve(message?.data?.imgData)
+    );
+  });
+
+export const imgDataToBuffer = (imageData: ImageData): Buffer => {
+  const canvas = document.createElement("canvas");
+
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  canvas.getContext("2d")?.putImageData(imageData, 0, 0);
+
+  return Buffer.from(
+    canvas?.toDataURL("image/png").replace("data:image/png;base64,", ""),
+    "base64"
+  );
+};
+
 export const cleanUpBufferUrl = (url: string): void => URL.revokeObjectURL(url);
 
 const loadScript = (
   src: string,
   defer?: boolean,
-  force?: boolean
+  force?: boolean,
+  asModule?: boolean
 ): Promise<Event> =>
   new Promise((resolve, reject) => {
     const loadedScripts = [...document.scripts];
@@ -143,12 +169,13 @@ const loadScript = (
 
     script.async = false;
     if (defer) script.defer = true;
+    if (asModule) script.type = "module";
     script.fetchPriority = "high";
     script.src = src;
     script.addEventListener("error", reject, ONE_TIME_PASSIVE_EVENT);
     script.addEventListener("load", resolve, ONE_TIME_PASSIVE_EVENT);
 
-    document.head.appendChild(script);
+    document.head.append(script);
   });
 
 const loadStyle = (href: string): Promise<Event> =>
@@ -172,34 +199,41 @@ const loadStyle = (href: string): Promise<Event> =>
     link.addEventListener("error", reject, ONE_TIME_PASSIVE_EVENT);
     link.addEventListener("load", resolve, ONE_TIME_PASSIVE_EVENT);
 
-    document.head.appendChild(link);
+    document.head.append(link);
   });
 
 export const loadFiles = async (
   files?: string[],
   defer?: boolean,
-  force?: boolean
+  force?: boolean,
+  asModule?: boolean
 ): Promise<void> =>
   !files || files.length === 0
     ? Promise.resolve()
     : files.reduce(async (_promise, file) => {
         await (extname(file).toLowerCase() === ".css"
           ? loadStyle(encodeURI(file))
-          : loadScript(encodeURI(file), defer, force));
+          : loadScript(encodeURI(file), defer, force, asModule));
       }, Promise.resolve());
+
+export const getHtmlToImage = async (): Promise<
+  typeof HtmlToImage | undefined
+> => {
+  await loadFiles(["/System/html-to-image/html-to-image.js"]);
+
+  const { htmlToImage } = window as unknown as Window & {
+    htmlToImage: typeof HtmlToImage;
+  };
+
+  return htmlToImage;
+};
 
 export const pxToNum = (value: number | string = 0): number =>
   typeof value === "number" ? value : Number.parseFloat(value);
 
-export const viewHeight = (): number =>
-  window.screen.height
-    ? Math.min(window.innerHeight, window.screen.height)
-    : window.innerHeight;
+export const viewHeight = (): number => window.innerHeight;
 
-export const viewWidth = (): number =>
-  window.screen.width
-    ? Math.min(window.innerWidth, window.screen.width)
-    : window.innerWidth;
+export const viewWidth = (): number => window.innerWidth;
 
 export const getWindowViewport = (): Position => ({
   x: viewWidth(),
@@ -216,16 +250,17 @@ export const calcInitialPosition = (
     viewHeight() - (relativePosition.bottom || 0) - container.offsetHeight,
 });
 
+const GRID_TEMPLATE_ROWS = "grid-template-rows";
+
 const calcGridDropPosition = (
   gridElement: HTMLElement | null,
-  { x = 0, y = 0, offsetX = 0, offsetY = 0 }: DragPosition
+  { x = 0, y = 0 }: DragPosition
 ): IconPosition => {
-  if (!gridElement) return {} as IconPosition;
+  if (!gridElement) return Object.create(null) as IconPosition;
 
   const gridComputedStyle = window.getComputedStyle(gridElement);
   const gridTemplateRows = gridComputedStyle
-    // eslint-disable-next-line sonarjs/no-duplicate-string
-    .getPropertyValue("grid-template-rows")
+    .getPropertyValue(GRID_TEMPLATE_ROWS)
     .split(" ");
   const gridTemplateColumns = gridComputedStyle
     .getPropertyValue("grid-template-columns")
@@ -242,11 +277,11 @@ const calcGridDropPosition = (
 
   return {
     gridColumnStart: Math.min(
-      Math.ceil((x + offsetX) / (gridColumnWidth + gridColumnGap)),
+      Math.ceil(x / (gridColumnWidth + gridColumnGap)),
       gridTemplateColumns.length
     ),
     gridRowStart: Math.min(
-      Math.ceil((y + offsetY - paddingTop) / (gridRowHeight + gridRowGap)),
+      Math.ceil((y - paddingTop) / (gridRowHeight + gridRowGap)),
       gridTemplateRows.length
     ),
   };
@@ -260,28 +295,41 @@ const updateIconPositionsIfEmpty = (
 ): IconPositions => {
   if (!gridElement) return iconPositions;
 
-  const [fileOrder] = sortOrders[url];
+  const [fileOrder = []] = sortOrders[url] || [];
   const newIconPositions: IconPositions = {};
   const gridComputedStyle = window.getComputedStyle(gridElement);
   const gridTemplateRowCount = gridComputedStyle
-    .getPropertyValue("grid-template-rows")
+    .getPropertyValue(GRID_TEMPLATE_ROWS)
     .split(" ").length;
 
   fileOrder.forEach((entry, index) => {
     const entryUrl = join(url, entry);
 
     if (!iconPositions[entryUrl]) {
-      const position = index + 1;
-      const gridColumnStart = Math.ceil(position / gridTemplateRowCount);
-      const gridRowStart =
-        position - gridTemplateRowCount * (gridColumnStart - 1);
+      const gridEntry = [...gridElement.children].find((element) =>
+        element.querySelector(`button[aria-label="${entry}"]`)
+      );
 
-      newIconPositions[entryUrl] = { gridColumnStart, gridRowStart };
+      if (gridEntry instanceof HTMLElement) {
+        const { x, y, height, width } = gridEntry.getBoundingClientRect();
+
+        newIconPositions[entryUrl] = calcGridDropPosition(gridElement, {
+          x: x - width,
+          y: y + height,
+        });
+      } else {
+        const position = index + 1;
+        const gridColumnStart = Math.ceil(position / gridTemplateRowCount);
+        const gridRowStart =
+          position - gridTemplateRowCount * (gridColumnStart - 1);
+
+        newIconPositions[entryUrl] = { gridColumnStart, gridRowStart };
+      }
     }
   });
 
   return Object.keys(newIconPositions).length > 0
-    ? newIconPositions
+    ? { ...newIconPositions, ...iconPositions }
     : iconPositions;
 };
 
@@ -308,7 +356,7 @@ const calcGridPositionOffset = (
 
   const gridComputedStyle = window.getComputedStyle(gridElement);
   const gridTemplateRowCount = gridComputedStyle
-    .getPropertyValue("grid-template-rows")
+    .getPropertyValue(GRID_TEMPLATE_ROWS)
     .split(" ").length;
   const {
     gridColumnStart: targetGridColumnStart,
@@ -352,15 +400,24 @@ export const updateIconPositions = (
   const gridDropPosition = calcGridDropPosition(gridElement, dragPosition);
 
   if (
+    draggedEntries.length > 0 &&
     !Object.values(currentIconPositions).some(
       ({ gridColumnStart, gridRowStart }) =>
         gridColumnStart === gridDropPosition.gridColumnStart &&
         gridRowStart === gridDropPosition.gridRowStart
     )
   ) {
-    const targetUrl = join(directory, draggedEntries[0]);
+    const targetFile =
+      draggedEntries.find((entry) =>
+        entry.startsWith(document.activeElement?.textContent || "")
+      ) || draggedEntries[0];
+    const targetUrl = join(directory, targetFile);
+    const adjustDraggedEntries = [
+      targetFile,
+      ...draggedEntries.filter((entry) => entry !== targetFile),
+    ];
     const newIconPositions = Object.fromEntries(
-      draggedEntries
+      adjustDraggedEntries
         .map<[string, IconPosition]>((entryFile) => {
           const url = join(directory, entryFile);
 
@@ -373,7 +430,7 @@ export const updateIconPositions = (
                   targetUrl,
                   currentIconPositions,
                   gridDropPosition,
-                  draggedEntries,
+                  adjustDraggedEntries,
                   gridElement
                 ),
           ];
@@ -414,53 +471,9 @@ export const isCanvasDrawn = (canvas?: HTMLCanvasElement | null): boolean =>
       .data.some((channel) => channel !== 0)
   );
 
-export const maxSize = (size: Size, lockAspectRatio: boolean): Size => {
-  const desiredHeight = Number(size.height);
-  const desiredWidth = Number(size.width);
-  const [vh, vw] = [viewHeight(), viewWidth()];
-  const vhWithoutTaskbar = vh - TASKBAR_HEIGHT;
-  const height = Math.min(desiredHeight, vhWithoutTaskbar);
-  const width = Math.min(desiredWidth, vw);
-
-  if (!lockAspectRatio) return { height, width };
-
-  const isDesiredHeight = desiredHeight === height;
-  const isDesiredWidth = desiredWidth === width;
-
-  if (!isDesiredHeight && !isDesiredWidth) {
-    if (desiredHeight > desiredWidth) {
-      return {
-        height,
-        width: Math.round(width / (vhWithoutTaskbar / height)),
-      };
-    }
-
-    return {
-      height: Math.round(height / (vw / width)),
-      width,
-    };
-  }
-
-  if (!isDesiredHeight) {
-    return {
-      height,
-      width: Math.round(width / (desiredHeight / height)),
-    };
-  }
-
-  if (!isDesiredWidth) {
-    return {
-      height: Math.round(height / (desiredWidth / width)),
-      width,
-    };
-  }
-
-  return { height, width };
-};
-
 const bytesInKB = 1024;
-const bytesInMB = 1022976; // 1024 * 999;
-const bytesInGB = 1047527424; // 1024 * 1024 * 999;
+const bytesInMB = 1022976; // 1024 * 999
+const bytesInGB = 1047527424; // 1024 * 1024 * 999
 const bytesInTB = 1072668082176; // 1024 * 1024 * 1024 * 999
 
 const formatNumber = (number: number): string =>
@@ -491,7 +504,7 @@ export const getTZOffsetISOString = (): string => {
   ).toISOString();
 };
 
-export const getUrlOrSearch = (input: string): string => {
+export const getUrlOrSearch = async (input: string): Promise<string> => {
   const isIpfs = input.startsWith("ipfs://");
   const hasHttpSchema =
     input.startsWith("http://") || input.startsWith("https://");
@@ -502,13 +515,17 @@ export const getUrlOrSearch = (input: string): string => {
     input.endsWith(".org");
 
   try {
-    const { href, pathname } = new URL(
+    const { href } = new URL(
       hasHttpSchema || !hasTld || isIpfs ? input : `https://${input}`
     );
 
-    return isIpfs
-      ? `${IPFS_GATEWAY_URL}${pathname.split("/").filter(Boolean).join("/")}`
-      : href;
+    if (isIpfs) {
+      const { getIpfsGatewayUrl } = await import("utils/ipfs");
+
+      return await getIpfsGatewayUrl(href);
+    }
+
+    return href;
   } catch {
     return `${GOOGLE_SEARCH_QUERY}${input}`;
   }
@@ -537,7 +554,7 @@ export const haltEvent = (
 export const createOffscreenCanvas = (
   containerElement: HTMLElement,
   devicePixelRatio = 1,
-  customSize: Size = {} as Size
+  customSize: Size = Object.create(null) as Size
 ): OffscreenCanvas => {
   const canvas = document.createElement("canvas");
   const height = Number(customSize?.height) || containerElement.offsetHeight;
@@ -549,7 +566,7 @@ export const createOffscreenCanvas = (
   canvas.height = Math.floor(height * devicePixelRatio);
   canvas.width = Math.floor(width * devicePixelRatio);
 
-  containerElement.appendChild(canvas);
+  containerElement.append(canvas);
 
   return canvas.transferControlToOffscreen();
 };
@@ -601,29 +618,29 @@ export const preloadLibs = (libs: string[] = []): void => {
     const link = document.createElement(
       "link"
     ) as HTMLElementWithPriority<HTMLLinkElement>;
-    const ext = extname(lib).toLowerCase();
-
-    if (ext.startsWith(".htm")) {
-      link.as = "document";
-
-      const linkPreRender = document.createElement(
-        "link"
-      ) as HTMLElementWithPriority<HTMLLinkElement>;
-
-      linkPreRender.fetchPriority = "high";
-      linkPreRender.rel = "prerender";
-      linkPreRender.href = lib;
-
-      document.head.appendChild(linkPreRender);
-    } else {
-      link.as = ext === ".css" ? "style" : "script";
-    }
 
     link.fetchPriority = "high";
     link.rel = "preload";
     link.href = lib;
 
-    document.head.appendChild(link);
+    switch (extname(lib).toLowerCase()) {
+      case ".css":
+        link.as = "style";
+        break;
+      case ".htm":
+      case ".html":
+        link.rel = "prerender";
+        break;
+      case ".url":
+        link.as = "fetch";
+        link.crossOrigin = "anonymous";
+        break;
+      default:
+        link.as = "script";
+        break;
+    }
+
+    document.head.append(link);
   });
 };
 

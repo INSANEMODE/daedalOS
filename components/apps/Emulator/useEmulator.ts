@@ -5,7 +5,7 @@ import useTitle from "components/system/Window/useTitle";
 import { useFileSystem } from "contexts/fileSystem";
 import { useProcesses } from "contexts/process";
 import { basename, dirname, extname, join } from "path";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { ICON_CACHE, ICON_CACHE_EXTENSION, SAVE_PATH } from "utils/constants";
 import { bufferToUrl, loadFiles } from "utils/functions";
 import { zipAsync } from "utils/zipFunctions";
@@ -34,6 +34,9 @@ const useEmulator = (
   const loadedUrlRef = useRef<string>("");
   const loadRom = useCallback(async () => {
     if (!url) return;
+
+    containerRef.current?.classList.remove("drop");
+
     if (loadedUrlRef.current) {
       if (loadedUrlRef.current !== url) {
         loadedUrlRef.current = "";
@@ -43,7 +46,7 @@ const useEmulator = (
 
           div.id = "emulator";
           [...containerRef.current.children].forEach((child) => child.remove());
-          containerRef.current.appendChild(div);
+          containerRef.current.append(div);
           loadRom();
         }
       }
@@ -57,7 +60,7 @@ const useEmulator = (
 
     window.EJS_gameName = basename(url, ext);
 
-    const [console, { core, zip }] = getCore(ext);
+    const [console, { core = "", zip = false } = {}] = getCore(ext);
     const rom = await readFile(url);
 
     window.EJS_gameUrl = bufferToUrl(
@@ -86,7 +89,7 @@ const useEmulator = (
       const saveState = async (): Promise<void> => {
         if (!(await exists(SAVE_PATH))) await mkdirRecursive(SAVE_PATH);
         if (await writeFile(savePath, Buffer.from(state), true)) {
-          const iconCacheRootPath = join(ICON_CACHE, dirname(savePath));
+          const iconCacheRootPath = join(ICON_CACHE, SAVE_PATH);
           const iconCachePath = join(
             ICON_CACHE,
             `${savePath}${ICON_CACHE_EXTENSION}`
@@ -136,11 +139,14 @@ const useEmulator = (
   ]);
 
   useEffect(() => {
-    if (!url) setLoading(false);
-    else loadRom();
-  }, [loadRom, setLoading, url]);
+    if (url) loadRom();
+    else {
+      setLoading(false);
+      containerRef.current?.classList.add("drop");
+    }
+  }, [containerRef, loadRom, setLoading, url]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!loading) {
       const canvas = containerRef.current?.querySelector("canvas");
 

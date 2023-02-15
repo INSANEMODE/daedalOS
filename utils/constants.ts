@@ -1,20 +1,41 @@
 import type { Size } from "components/system/Window/RndWindow/useResizable";
+import type { ClockSource, WallpaperFit } from "contexts/session/types";
 import type { AsyncZipOptions } from "fflate";
+import type { ThemeName } from "styles/themes";
 
 export const BASE_2D_CONTEXT_OPTIONS: CanvasRenderingContext2DSettings = {
   alpha: false,
   desynchronized: true,
 };
 
-export const IPFS_GATEWAY_URL = "https://cloudflare-ipfs.com/ipfs/";
+export const IPFS_GATEWAY_URLS = [
+  "https://<CID>.ipfs.cf-ipfs.com/",
+  "https://<CID>.ipfs.dweb.link/",
+  "https://cloudflare-ipfs.com/ipfs/<CID>/",
+  "https://gateway.ipfs.io/ipfs/<CID>/",
+];
+
+export const IFRAME_CONFIG = {
+  referrerPolicy: "no-referrer" as React.HTMLAttributeReferrerPolicy,
+  sandbox:
+    "allow-downloads allow-forms allow-modals allow-pointer-lock allow-popups allow-presentation allow-same-origin allow-scripts",
+};
 
 export const DEFAULT_LOCALE = "en";
 
-export const DEFAULT_THEME = "defaultTheme";
+export const DEFAULT_ASCENDING = true;
+
+export const DEFAULT_CLOCK_SOURCE: ClockSource = "local";
+
+export const DEFAULT_THEME: ThemeName = "defaultTheme";
+
+export const DEFAULT_WALLPAPER = "VANTA";
+
+export const DEFAULT_WALLPAPER_FIT: WallpaperFit = "fill";
 
 export const THIN_SCROLLBAR_WIDTH = 13;
 
-export const BASE_CLOCK_WIDTH = 66;
+export const BASE_CLOCK_WIDTH = 68;
 
 export const SMALLEST_PNG_SIZE = 51;
 
@@ -31,9 +52,21 @@ export const FS_HANDLES = "FileSystemAccessHandles";
 
 export const HOME = "/Users/Public";
 
+export const PICTURES_FOLDER = `${HOME}/Pictures`;
+
+export const SLIDESHOW_FILE = "slideshow.json";
+
 export const ICON_GIF_SECONDS = 2;
 
 export const ICON_GIF_FPS = 24;
+
+export const PEEK_MAX_WIDTH = 200;
+
+export const LIST_VIEW_ANIMATION = {
+  animate: { opacity: 1 },
+  initial: { opacity: 0 },
+  transition: { duration: 0.15 },
+};
 
 export const TIFF_IMAGE_FORMATS = new Set([
   ".cr2",
@@ -57,12 +90,21 @@ export const IMAGE_FILE_EXTENSIONS = new Set([
   ".jpe",
   ".jpeg",
   ".jpg",
+  ".jxl",
   ".pjp",
   ".pjpeg",
   ".png",
   ".svg",
+  ".qoi",
   ".webp",
   ".xbm",
+]);
+
+export const UNSUPPORTED_BACKGROUND_EXTENSIONS = new Set([
+  ...TIFF_IMAGE_FORMATS,
+  ".jxl",
+  ".qoi",
+  ".svg",
 ]);
 
 export const EDITABLE_IMAGE_FILE_EXTENSIONS = new Set([
@@ -88,6 +130,8 @@ export const MAX_FILE_NAME_LENGTH = 223;
 export const MENU_SEPERATOR = { seperator: true };
 
 export const MILLISECONDS_IN_SECOND = 1000;
+
+export const MILLISECONDS_IN_MINUTE = 60000;
 
 export const MILLISECONDS_IN_DAY = 86400000;
 
@@ -199,10 +243,12 @@ export const SYSTEM_PATHS = new Set(["/.deletedFiles.log"]);
 
 export const DESKTOP_PATH = `${HOME}/Desktop`;
 
+export const SYSTEM_SHORTCUT_DIRECTORIES = new Set([DESKTOP_PATH]);
+
 export const TRANSITIONS_IN_MILLISECONDS = {
   DOUBLE_CLICK: 500,
   LONG_PRESS: 500,
-  START_MENU: 450,
+  START_MENU: 400,
   WINDOW: 250,
 };
 
@@ -225,6 +271,18 @@ export const VIDEO_FILE_EXTENSIONS = new Set([
   ".webm",
 ]);
 
+export const DYNAMIC_EXTENSION = new Set([
+  ...AUDIO_FILE_EXTENSIONS,
+  ...IMAGE_FILE_EXTENSIONS,
+  ...TIFF_IMAGE_FORMATS,
+  ...VIDEO_FILE_EXTENSIONS,
+  ".ani",
+  ".exe",
+  ".mp3",
+  ".sav",
+  ".whtml",
+]);
+
 export const SAVE_TITLE_CHAR = "\u25CF";
 
 export const ROOT_NAME = "My PC";
@@ -236,6 +294,8 @@ export const ICON_PATH = "/System/Icons";
 export const USER_ICON_PATH = `${HOME}/Icons`;
 
 export const ICON_CACHE = `${USER_ICON_PATH}/Cache`;
+
+export const YT_ICON_CACHE = `${ICON_CACHE}/YouTube`;
 
 export const ICON_CACHE_EXTENSION = ".cache";
 

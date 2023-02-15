@@ -16,10 +16,21 @@ import useTitle from "components/system/Window/useTitle";
 import { useFileSystem } from "contexts/fileSystem";
 import { fs9pV4ToV3 } from "contexts/fileSystem/functions";
 import { useProcesses } from "contexts/process";
+import { useSession } from "contexts/session";
 import { basename, dirname, extname, join } from "path";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SAVE_PATH, TRANSITIONS_IN_MILLISECONDS } from "utils/constants";
-import { bufferToUrl, cleanUpBufferUrl, loadFiles } from "utils/functions";
+import {
+  ICON_CACHE,
+  ICON_CACHE_EXTENSION,
+  SAVE_PATH,
+  TRANSITIONS_IN_MILLISECONDS,
+} from "utils/constants";
+import {
+  bufferToUrl,
+  cleanUpBufferUrl,
+  getHtmlToImage,
+  loadFiles,
+} from "utils/functions";
 
 const useV86 = (
   id: string,
@@ -31,6 +42,7 @@ const useV86 = (
   const {
     processes: { [id]: process },
   } = useProcesses();
+  const { foregroundId } = useSession();
   const { closing, libs = [] } = process || {};
   const { appendFileToTitle } = useTitle(id);
   const shutdown = useRef(false);
@@ -47,7 +59,7 @@ const useV86 = (
     [emulator]
   );
   const closeDiskImage = useCallback(
-    async (diskImageUrl: string): Promise<void> => {
+    async (diskImageUrl: string, screenshot?: Buffer): Promise<void> => {
       const saveName = `${basename(diskImageUrl)}${saveExtension}`;
 
       if (!(await exists(SAVE_PATH))) {
@@ -55,13 +67,30 @@ const useV86 = (
         updateFolder(dirname(SAVE_PATH));
       }
 
+      const savePath = join(SAVE_PATH, saveName);
+
       if (
         await writeFile(
-          join(SAVE_PATH, saveName),
+          savePath,
           Buffer.from(await saveStateAsync(diskImageUrl)),
           true
         )
       ) {
+        if (screenshot) {
+          const iconCacheRootPath = join(ICON_CACHE, SAVE_PATH);
+          const iconCachePath = join(
+            ICON_CACHE,
+            `${savePath}${ICON_CACHE_EXTENSION}`
+          );
+
+          if (!(await exists(iconCacheRootPath))) {
+            await mkdirRecursive(iconCacheRootPath);
+            updateFolder(dirname(SAVE_PATH));
+          }
+
+          await writeFile(iconCachePath, screenshot, true);
+        }
+
         try {
           emulator[diskImageUrl]?.destroy();
         } catch {
@@ -157,23 +186,70 @@ const useV86 = (
   }, [libs, loading, setLoading]);
 
   useEffect(() => {
+    const isActiveInstance = foregroundId === id;
+
+    Object.values(emulator).forEach((emulatorInstance) =>
+      emulatorInstance?.keyboard_set_status(isActiveInstance)
+    );
+  }, [emulator, foregroundId, id]);
+
+  useEffect(() => {
     if (process && !closing && !loading && !(url in emulator)) {
       setEmulator({ [url]: undefined });
       loadDiskImage();
     }
 
+    const currentContainerRef = containerRef.current;
+
     return () => {
       if (url && closing && !shutdown.current) {
         shutdown.current = true;
         if (emulator[url]) {
-          window.setTimeout(
-            () => closeDiskImage(url),
-            TRANSITIONS_IN_MILLISECONDS.WINDOW
-          );
+          const takeScreenshot = async (): Promise<Buffer | undefined> => {
+            let screenshot: string | undefined;
+
+            if (emulator[url]?.v86.cpu.devices.vga.graphical_mode) {
+              screenshot = (
+                currentContainerRef?.querySelector(
+                  "canvas"
+                ) as HTMLCanvasElement
+              )?.toDataURL("image/png");
+            } else if (currentContainerRef instanceof HTMLElement) {
+              const htmlToImage = await getHtmlToImage();
+
+              screenshot = await htmlToImage?.toPng(currentContainerRef, {
+                skipAutoScale: true,
+              });
+            }
+
+            return screenshot
+              ? Buffer.from(
+                  screenshot.replace("data:image/png;base64,", ""),
+                  "base64"
+                )
+              : undefined;
+          };
+          const scheduleSaveState = (screenshot?: Buffer): void => {
+            window.setTimeout(
+              () => closeDiskImage(url, screenshot),
+              TRANSITIONS_IN_MILLISECONDS.WINDOW
+            );
+          };
+
+          takeScreenshot().then(scheduleSaveState).catch(scheduleSaveState);
         }
       }
     };
-  }, [closeDiskImage, closing, emulator, loadDiskImage, loading, process, url]);
+  }, [
+    closeDiskImage,
+    closing,
+    containerRef,
+    emulator,
+    loadDiskImage,
+    loading,
+    process,
+    url,
+  ]);
 };
 
 export default useV86;

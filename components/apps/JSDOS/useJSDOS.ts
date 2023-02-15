@@ -49,6 +49,11 @@ const useJSDOS = (
           baseContainer?.addEventListener("keyup", captureKeys, {
             capture: true,
           });
+          baseContainer?.addEventListener(
+            "focus",
+            () => containerRef.current?.focus(PREVENT_SCROLL),
+            { passive: true }
+          );
 
           setDosInstance(window.Dos(containerRef.current, dosOptions));
         }
@@ -81,9 +86,13 @@ const useJSDOS = (
           pxToNum(canvas?.style.height),
         ];
         const { height: currentHeight = 0, width: currentWidth = 0 } =
-          containerRef.current?.getBoundingClientRect() || {};
+          canvas?.getBoundingClientRect() || {};
 
-        if (height !== currentHeight || width !== currentWidth) {
+        if (
+          height &&
+          width &&
+          (height !== currentHeight || width !== currentWidth)
+        ) {
           updateWindowSize(height, width);
         }
       });

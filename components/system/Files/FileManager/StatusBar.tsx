@@ -39,11 +39,15 @@ const StatusBar: FC<StatusBarProps> = ({ count, directory, selected }) => {
 
           const path = join(directory, file);
 
-          if (await exists(path)) {
-            return (await lstat(path)).isDirectory()
-              ? UNCALCULATED_SIZE
-              : (currentSize === UNKNOWN_SIZE ? 0 : currentSize) +
-                  (await stat(path)).size;
+          try {
+            if (await exists(path)) {
+              return (await lstat(path)).isDirectory()
+                ? UNCALCULATED_SIZE
+                : (currentSize === UNKNOWN_SIZE ? 0 : currentSize) +
+                    (await stat(path)).size;
+            }
+          } catch {
+            // Ignore errors getting file sizes
           }
 
           return totalSize;
@@ -70,11 +74,11 @@ const StatusBar: FC<StatusBarProps> = ({ count, directory, selected }) => {
   return (
     <StyledStatusBar ref={statusBarRef} onContextMenuCapture={haltEvent}>
       <div {...label("Total item count")}>
-        {count} item{count !== 1 ? "s" : ""}
+        {count} item{count === 1 ? "" : "s"}
       </div>
       {showSelected && selected.length > 0 && (
         <div className="selected" {...label("Selected item count and size")}>
-          {selected.length} item{selected.length !== 1 ? "s" : ""} selected
+          {selected.length} item{selected.length === 1 ? "" : "s"} selected
           {selectedSize !== UNKNOWN_SIZE && selectedSize !== UNCALCULATED_SIZE
             ? `\u00A0\u00A0${getFormattedSize(selectedSize)}`
             : ""}

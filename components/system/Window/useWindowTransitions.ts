@@ -77,13 +77,17 @@ const useWindowTransitions = (
       y: windowY = 0,
     } = componentWindow?.getBoundingClientRect() || {};
 
-    const x = taskbarX - windowX - windowWidth / 2 + taskbarWidth / 2;
-    const y = taskbarY - windowY - windowHeight / 2 + taskbarHeight / 2;
+    const x = Math.round(
+      taskbarX - windowX - windowWidth / 2 + taskbarWidth / 2
+    );
+    const y = Math.round(
+      taskbarY - windowY - windowHeight / 2 + taskbarHeight / 2
+    );
 
     if (!(x === 0 && y === 0)) {
       setMinimize({ ...baseMinimize, x, y });
     }
-  }, [componentWindow, minimized, processes, taskbarEntry]);
+  }, [componentWindow, minimized, taskbarEntry]);
 
   useEffect(() => {
     const monitorViewportResize = (): void => {

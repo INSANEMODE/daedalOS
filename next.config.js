@@ -25,13 +25,10 @@ const nextConfig = {
     buildActivityPosition: "top-right",
   },
   experimental: {
-    browsersListForSwc: true,
     legacyBrowsers: false,
-    serverComponents: false,
     swcFileReading: true,
   },
   optimizeFonts: false,
-  output: "standalone",
   productionBrowserSourceMaps: false,
   reactStrictMode: true,
   swcMinify: !isProduction,

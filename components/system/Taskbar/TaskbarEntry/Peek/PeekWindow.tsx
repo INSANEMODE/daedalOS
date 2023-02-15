@@ -48,6 +48,7 @@ const PeekWindow: FC<PeekWindowProps> = ({ id }) => {
   return image ? (
     <StyledPeekWindow
       ref={peekRef}
+      className="peekWindow"
       onClick={onClick}
       style={offsetX ? { transform: `translateX(${offsetX}px)` } : undefined}
       {...peekTransition}
@@ -64,9 +65,8 @@ const PeekWindow: FC<PeekWindowProps> = ({ id }) => {
         <CloseIcon />
       </Button>
     </StyledPeekWindow>
-  ) : (
-    <></>
-  );
+  ) : // eslint-disable-next-line unicorn/no-null
+  null;
 };
 
 export default PeekWindow;

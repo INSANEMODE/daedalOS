@@ -1,4 +1,4 @@
-import { bookmarks, config, HOME_PAGE } from "components/apps/Browser/config";
+import { bookmarks, HOME_PAGE } from "components/apps/Browser/config";
 import { Arrow, Refresh, Stop } from "components/apps/Browser/NavigationIcons";
 import StyledBrowser from "components/apps/Browser/StyledBrowser";
 import type { ComponentProcessProps } from "components/system/Apps/RenderComponent";
@@ -13,7 +13,7 @@ import Button from "styles/common/Button";
 import Icon from "styles/common/Icon";
 import {
   FAVICON_BASE_PATH,
-  IPFS_GATEWAY_URL,
+  IFRAME_CONFIG,
   ONE_TIME_PASSIVE_EVENT,
 } from "utils/constants";
 import { getUrlOrSearch, GOOGLE_SEARCH_QUERY, label } from "utils/functions";
@@ -21,6 +21,7 @@ import { getUrlOrSearch, GOOGLE_SEARCH_QUERY, label } from "utils/functions";
 const Browser: FC<ComponentProcessProps> = ({ id }) => {
   const {
     icon: setIcon,
+    linkElement,
     url: changeUrl,
     processes: { [id]: process },
   } = useProcesses();
@@ -39,7 +40,7 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
 
     if (inputRef.current) inputRef.current.value = history[position + step];
   };
-  const [currentUrl, setCurrentUrl] = useState("");
+  const currentUrl = useRef("");
   const setUrl = useCallback(
     async (addressInput: string): Promise<void> => {
       const { contentWindow } = iframeRef.current || {};
@@ -52,10 +53,10 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
         setLoading(true);
         setSrcDoc("");
         if (isHtml) setSrcDoc((await readFile(addressInput)).toString());
-        setIcon(id, processDirectory["Browser"].icon);
+        setIcon(id, processDirectory.Browser.icon);
 
         if (!isHtml) {
-          const addressUrl = getUrlOrSearch(addressInput);
+          const addressUrl = await getUrlOrSearch(addressInput);
 
           contentWindow.location.replace(addressUrl);
 
@@ -70,7 +71,7 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
             prependFileToTitle(name);
           }
 
-          if (addressUrl.startsWith(IPFS_GATEWAY_URL)) {
+          if (addressInput.startsWith("ipfs://")) {
             setIcon(id, "/System/Icons/Favicons/ipfs.webp");
           } else {
             const favicon = new Image();
@@ -108,11 +109,17 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
   );
 
   useEffect(() => {
-    if (process && history[position] !== currentUrl) {
+    if (process && history[position] !== currentUrl.current) {
+      currentUrl.current = history[position];
       setUrl(history[position]);
-      setCurrentUrl(history[position]);
     }
-  }, [currentUrl, history, position, process, setUrl]);
+  }, [history, position, process, setUrl]);
+
+  useEffect(() => {
+    if (iframeRef?.current) {
+      linkElement(id, "peekElement", iframeRef.current);
+    }
+  }, [id, linkElement]);
 
   return (
     <StyledBrowser>
@@ -168,7 +175,7 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
             }}
             {...label(`${name}\n${bookmarkUrl}`)}
           >
-            <Icon $imgSize={16} alt={name} src={icon} />
+            <Icon alt={name} imgSize={16} src={icon} />
           </Button>
         ))}
       </nav>
@@ -178,7 +185,7 @@ const Browser: FC<ComponentProcessProps> = ({ id }) => {
         srcDoc={srcDoc || undefined}
         style={style}
         title={id}
-        {...config}
+        {...IFRAME_CONFIG}
       />
     </StyledBrowser>
   );

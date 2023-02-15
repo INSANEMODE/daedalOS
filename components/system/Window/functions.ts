@@ -1,3 +1,7 @@
+import {
+  MIN_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
+} from "components/system/Window/RndWindow/rndDefaults";
 import type { Size } from "components/system/Window/RndWindow/useResizable";
 import type { Processes } from "contexts/process/types";
 import type { WindowState } from "contexts/session/types";
@@ -42,7 +46,7 @@ export const centerPosition = ({ height, width }: Size): Position => {
   };
 };
 
-const WINDOW_OFFSCREEN_BUFFER_PX = {
+export const WINDOW_OFFSCREEN_BUFFER_PX = {
   BOTTOM: 15,
   LEFT: 150,
   RIGHT: 50,
@@ -73,4 +77,51 @@ export const isWindowOutsideBounds = (
     x + pxToNum(width) > bounds.x ||
     y + pxToNum(height) > bounds.y
   );
+};
+
+export const minMaxSize = (size: Size, lockAspectRatio: boolean): Size => {
+  const desiredHeight = Number(size.height);
+  const desiredWidth = Number(size.width);
+  const [vh, vw] = [viewHeight(), viewWidth()];
+  const vhWithoutTaskbar = vh - TASKBAR_HEIGHT;
+  const height = Math.max(
+    MIN_WINDOW_HEIGHT,
+    Math.min(desiredHeight, vhWithoutTaskbar)
+  );
+  const width = Math.max(MIN_WINDOW_WIDTH, Math.min(desiredWidth, vw));
+
+  if (!lockAspectRatio) return { height, width };
+
+  const isDesiredHeight = desiredHeight === height;
+  const isDesiredWidth = desiredWidth === width;
+
+  if (!isDesiredHeight && !isDesiredWidth) {
+    if (desiredHeight > desiredWidth) {
+      return {
+        height,
+        width: Math.round(width / (vhWithoutTaskbar / height)),
+      };
+    }
+
+    return {
+      height: Math.round(height / (vw / width)),
+      width,
+    };
+  }
+
+  if (!isDesiredHeight) {
+    return {
+      height,
+      width: Math.round(width / (desiredHeight / height)),
+    };
+  }
+
+  if (!isDesiredWidth) {
+    return {
+      height: Math.round(height / (desiredWidth / width)),
+      width,
+    };
+  }
+
+  return { height, width };
 };

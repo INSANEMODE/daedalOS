@@ -11,6 +11,7 @@ const prettyLanguages = new Set([
   "less",
   "html",
   "markdown",
+  "xml",
 ]);
 
 const getLanguageParser = async (
@@ -32,6 +33,12 @@ const getLanguageParser = async (
     return {
       parser: "html",
       plugins: [await import("prettier/parser-html")],
+    };
+  }
+  if (language === "xml") {
+    return {
+      parser: "xml",
+      plugins: [(await import("@prettier/plugin-xml")) as Plugin],
     };
   }
   if (language === "markdown") {

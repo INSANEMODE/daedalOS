@@ -8,7 +8,8 @@ import type { CompleteAction } from "components/system/Files/FileManager/useFold
 import { useFileSystem } from "contexts/fileSystem";
 import { useProcesses } from "contexts/process";
 import { useSession } from "contexts/session";
-import { basename, join, relative } from "path";
+import { basename, extname, join, relative } from "path";
+import { useCallback } from "react";
 import { DESKTOP_PATH } from "utils/constants";
 import { haltEvent, updateIconPositions } from "utils/functions";
 
@@ -19,7 +20,7 @@ type FileDrop = {
 };
 
 type FileDropProps = {
-  callback?: (path: string, buffer?: Buffer) => Promise<void> | void;
+  callback?: (path: string, buffer?: Buffer) => Promise<void>;
   directory?: string;
   id?: string;
   onDragLeave?: (event: DragEvent | React.DragEvent<HTMLElement>) => void;
@@ -38,26 +39,29 @@ const useFileDrop = ({
   const { url } = useProcesses();
   const { iconPositions, sortOrders, setIconPositions } = useSession();
   const { mkdirRecursive, updateFolder, writeFile } = useFileSystem();
-  const updateProcessUrl = async (
-    filePath: string,
-    fileData?: Buffer,
-    completeAction?: CompleteAction
-  ): Promise<void> => {
-    if (id) {
-      if (!fileData) {
-        if (completeAction === "updateUrl") url(id, filePath);
-      } else {
-        const tempPath = join(DESKTOP_PATH, filePath);
+  const updateProcessUrl = useCallback(
+    async (
+      filePath: string,
+      fileData?: Buffer,
+      completeAction?: CompleteAction
+    ): Promise<void> => {
+      if (id) {
+        if (fileData) {
+          const tempPath = join(DESKTOP_PATH, filePath);
 
-        await mkdirRecursive(DESKTOP_PATH);
+          await mkdirRecursive(DESKTOP_PATH);
 
-        if (await writeFile(tempPath, fileData, true)) {
-          if (completeAction === "updateUrl") url(id, tempPath);
-          updateFolder(DESKTOP_PATH, filePath);
+          if (await writeFile(tempPath, fileData, true)) {
+            if (completeAction === "updateUrl") url(id, tempPath);
+            updateFolder(DESKTOP_PATH, filePath);
+          }
+        } else if (completeAction === "updateUrl") {
+          url(id, filePath);
         }
       }
-    }
-  };
+    },
+    [id, mkdirRecursive, updateFolder, url, writeFile]
+  );
   const { openTransferDialog } = useTransferDialog();
 
   return {
@@ -69,6 +73,9 @@ const useFileDrop = ({
     onDrop: (event) => {
       if (updatePositions && event.target instanceof HTMLElement) {
         const { files, text } = getEventData(event as React.DragEvent);
+
+        if (files.length === 0 && text === "") return;
+
         const dragPosition = {
           x: event.clientX,
           y: event.clientY,
@@ -82,6 +89,8 @@ const useFileDrop = ({
           } catch {
             // Ignore failed JSON parsing
           }
+
+          if (fileEntries.length === 0) return;
 
           if (
             fileEntries[0].startsWith(directory) &&
@@ -98,6 +107,23 @@ const useFileDrop = ({
             .map((file) => file.getAsFile()?.name || "")
             .filter(Boolean);
         }
+
+        fileEntries = fileEntries.map((fileEntry) => {
+          if (!iconPositions[`${directory}/${fileEntry}`]) return fileEntry;
+
+          let iteration = 0;
+          let entryIteration = "";
+
+          do {
+            iteration += 1;
+            entryIteration = `${directory}/${basename(
+              fileEntry,
+              extname(fileEntry)
+            )} (${iteration})${extname(fileEntry)}`;
+          } while (iconPositions[entryIteration]);
+
+          return basename(entryIteration);
+        });
 
         updateIconPositions(
           directory,

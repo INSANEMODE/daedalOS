@@ -1,6 +1,7 @@
 import type {
   ButterChurnPresets,
   ButterChurnWebampPreset,
+  SkinData,
   WebampCI,
 } from "components/apps/Webamp/types";
 import { centerPosition } from "components/system/Window/functions";
@@ -62,6 +63,12 @@ export const enabledMilkdrop = (webamp: WebampCI): void =>
   webamp.store.dispatch({
     open: false,
     type: "ENABLE_MILKDROP",
+  });
+
+export const setSkinData = (webamp: WebampCI, data: SkinData): void =>
+  webamp.store.dispatch({
+    data,
+    type: "SET_SKIN_DATA",
   });
 
 const loadButterchurn = (webamp: WebampCI, butterchurn: unknown): void =>
@@ -157,7 +164,7 @@ export const loadMilkdropWhenNeeded = (webamp: WebampCI): void => {
                   node.remove();
                 }
               });
-              main.appendChild(webampDesktop);
+              main.append(webampDesktop);
             }
           }
         });
@@ -258,6 +265,8 @@ export const createM3uPlaylist = (tracks: URLTrack[]): string => {
   return `${["#EXTM3U", ...m3uPlaylist.filter(Boolean)].join("\n")}\n`;
 };
 
+const MAX_PLAYLIST_ITEMS = 1000;
+
 export const tracksFromPlaylist = async (
   data: string,
   extension: string,
@@ -269,9 +278,13 @@ export const tracksFromPlaylist = async (
     ".m3u": M3U,
     ".pls": PLS,
   };
-  const tracks = parser[extension]?.parse(data) ?? [];
+  const tracks =
+    parser[extension]
+      ?.parse(data)
+      .filter(Boolean)
+      .slice(0, MAX_PLAYLIST_ITEMS) ?? [];
 
-  return tracks.map(({ artist = "", file, length = 0, title = "" }) => {
+  return tracks.map(({ artist = "", file = "", length = 0, title = "" }) => {
     const [parsedArtist, parsedTitle] = [artist.trim(), title.trim()];
 
     return {

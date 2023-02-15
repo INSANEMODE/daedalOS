@@ -1,5 +1,8 @@
 import type Stats from "browserfs/dist/node/core/node_fs_stats";
-import type { FileReaders } from "components/system/Dialogs/Transfer/useTransferDialog";
+import type {
+  FileReaders,
+  ObjectReaders,
+} from "components/system/Dialogs/Transfer/useTransferDialog";
 import { getModifiedTime } from "components/system/Files/FileEntry/functions";
 import type {
   CompleteAction,
@@ -18,10 +21,16 @@ type FileStats = [string, FileStat];
 
 type SortFunction = (a: FileStats, b: FileStats) => number;
 
+export const sortByDate =
+  (directory: string) =>
+  ([aPath, aStats]: FileStats, [bPath, bStats]: FileStats): number =>
+    getModifiedTime(join(directory, aPath), aStats) -
+    getModifiedTime(join(directory, bPath), bStats);
+
 const sortByName = ([a]: FileStats, [b]: FileStats): number =>
   a.localeCompare(b, "en", { sensitivity: "base" });
 
-const sortBySize = (
+export const sortBySize = (
   [, { size: aSize }]: FileStats,
   [, { size: bSize }]: FileStats
 ): number => aSize - bSize;
@@ -66,19 +75,16 @@ export const sortContents = (
   Object.entries(contents).forEach((entry) => {
     const [, stat] = entry;
 
-    if (!stat.isDirectory()) {
-      files.push(entry);
-    } else {
-      folders.push(entry);
-    }
+    if (stat.isDirectory()) folders.push(entry);
+    else files.push(entry);
   });
 
   const sortContent = (fileStats: FileStats[]): FileStats[] => {
-    const sortedByName = fileStats.sort(sortByName);
+    fileStats.sort(sortByName);
 
     return sortFunction && sortFunction !== sortByName
-      ? sortedByName.sort(sortFunction)
-      : sortedByName;
+      ? fileStats.sort(sortFunction)
+      : fileStats;
   };
   const sortedFolders = sortContent(folders);
   const sortedFiles = sortContent(files);
@@ -103,9 +109,7 @@ export const sortFiles = (
   ascending: boolean
 ): Files => {
   const sortFunctionMap: Record<string, SortFunction> = {
-    date: ([aPath, aStats]: FileStats, [bPath, bStats]: FileStats): number =>
-      getModifiedTime(join(directory, aPath), aStats) -
-      getModifiedTime(join(directory, bPath), bStats),
+    date: sortByDate(directory),
     name: sortByName,
     size: sortBySize,
     type: sortByType,
@@ -123,7 +127,7 @@ export const iterateFileName = (name: string, iteration: number): string => {
   return `${fileName} (${iteration})${extension}`;
 };
 
-const createFileReaders = async (
+export const createFileReaders = async (
   files: DataTransferItemList | FileList | never[],
   directory: string,
   callback: (
@@ -157,7 +161,7 @@ const createFileReaders = async (
     subFolder = ""
   ): Promise<void> =>
     new Promise((resolve) => {
-      if (fileSystemEntry.isDirectory) {
+      if (fileSystemEntry?.isDirectory) {
         (fileSystemEntry as FileSystemDirectoryEntry)
           .createReader()
           .readEntries((entries) =>
@@ -168,7 +172,7 @@ const createFileReaders = async (
             ).then(() => resolve())
           );
       } else {
-        (fileSystemEntry as FileSystemFileEntry).file((file) => {
+        (fileSystemEntry as FileSystemFileEntry)?.file((file) => {
           addFile(file, subFolder);
           resolve();
         });
@@ -198,11 +202,21 @@ type EventData = {
 export const getEventData = (
   event: InputChangeEvent | never[] | React.DragEvent
 ): EventData => {
-  const files =
+  let files =
     (event as InputChangeEvent).target?.files ||
     (event as React.DragEvent).nativeEvent?.dataTransfer?.items ||
     [];
-  const text = (event as React.DragEvent).dataTransfer?.getData("text");
+
+  if (files instanceof DataTransferItemList) {
+    files = [...files].filter(
+      (item) => !("kind" in item) || item.kind === "file"
+    ) as unknown as DataTransferItemList;
+  }
+
+  const text =
+    files.length > 0
+      ? ""
+      : (event as React.DragEvent).dataTransfer?.getData("application/json");
 
   return { files, text };
 };
@@ -213,32 +227,45 @@ export const handleFileInputEvent = (
     fileName: string,
     buffer?: Buffer,
     completeAction?: CompleteAction
-  ) => void,
+  ) => Promise<void>,
   directory: string,
-  openTransferDialog: (fileReaders: FileReaders) => void
+  openTransferDialog: (fileReaders: FileReaders | ObjectReaders) => void
 ): void => {
   haltEvent(event);
 
   const { files, text } = getEventData(event);
 
-  if (!text) {
-    createFileReaders(files, directory, callback).then(openTransferDialog);
-  } else {
+  if (text) {
     try {
-      const filePaths = JSON.parse(text || "[]") as string[];
+      const filePaths = JSON.parse(text) as string[];
+      const isSingleFile = filePaths.length === 1;
+      const objectReaders = filePaths.map((filePath) => {
+        let aborted = false;
 
-      filePaths?.forEach(
-        (path) =>
-          dirname(path) !== "." &&
-          callback(
-            path,
-            undefined,
-            filePaths.length === 1 ? "updateUrl" : undefined
-          )
-      );
+        return {
+          abort: () => {
+            aborted = true;
+          },
+          directory,
+          name: filePath,
+          read: async () => {
+            if (aborted || dirname(filePath) === ".") return;
+
+            await callback(
+              filePath,
+              undefined,
+              isSingleFile ? "updateUrl" : undefined
+            );
+          },
+        };
+      });
+
+      openTransferDialog(objectReaders);
     } catch {
       // Failed to parse text data to JSON
     }
+  } else {
+    createFileReaders(files, directory, callback).then(openTransferDialog);
   }
 };
 
